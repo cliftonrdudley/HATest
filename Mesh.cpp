@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cmath>
 #include <limits>
+#include <sstream>
 
 int otherVertex( const Edge& inEdge, int vertex )
 {
@@ -142,6 +143,49 @@ Mesh Mesh::fromJson( std::istream& in )
   return result;
 }
 
+std::string Mesh::toJson() const
+{
+  std::stringstream jsonStream;
+  jsonStream << std::string( "{\n\t\"vertices\": [" );
+  // Improvement, use Boost string join.
+  int nVertices = numVertices();
+  for ( int i = 0; i < nVertices-1; i++ ) {
+    Vertex vertex = getVertex(i);
+    jsonStream << "[" << vertex.xCoord << "," << vertex.yCoord << "],";
+  }
+  Vertex lastVertex = getVertex(nVertices-1);
+  jsonStream << "[" << lastVertex.xCoord << "," << lastVertex.yCoord << "]],";
+
+  jsonStream << "\n\t\"edges\": [";
+  int nEdges = numEdges();
+  for ( int i = 0; i < nEdges-1; i++ ) {
+    Edge edge = getEdge(i);
+    jsonStream << "[" << edge.startVertex << "," << edge.endVertex << "],";
+  }
+  Edge lastEdge = getEdge(nEdges-1);
+  jsonStream << "[" << lastEdge.startVertex << "," << lastEdge.endVertex << "]],";
+
+  jsonStream << "\n\t\"polygons\": [";
+  int nPolygons = numPolygons();
+  for ( int i = 0; i < nPolygons-1; i++ ) {
+    Polygon polygon = getPolygon(i);
+    jsonStream << "[";
+    int nPolyVertices = polygon.vertices.size();
+    for ( int j = 0; j < nPolyVertices - 1; j++ ) {
+      jsonStream << polygon.vertices[j] << ",";
+    }
+    jsonStream << polygon.vertices[nPolyVertices-1] << "],";
+  }
+  Polygon lastPolygon = getPolygon(nPolygons-1);
+  jsonStream << "[";
+  int lastPolyVertices = lastPolygon.vertices.size();
+  for ( int j = 0; j < lastPolyVertices - 1; j++ ) {
+    jsonStream << lastPolygon.vertices[j] << ",";
+  }
+  jsonStream << lastPolygon.vertices[lastPolyVertices-1] << "]]\n}";
+  return jsonStream.str();
+}
+
 int Mesh::numVertices() const
 {
   return coordinates.size() / 2;
@@ -162,3 +206,24 @@ Vertex Mesh::getVertex( int index ) const
   assert( coordinates.size() > 2 * index + 1 );
   return Vertex{ coordinates[ 2 * index ], coordinates[ 2 * index + 1 ] };
 }
+
+
+// Out of time
+// How I would do Algorithm 2:
+//   Call the functions in Parser.cpp, plus an additional one
+//   to read the polygons, and construct a Mesh object.
+//   Create an unordered_map between edges and pairs of polygon
+//   indices (using -1 in the second slot if it's an outer edge).
+//   Runtime is O(N) N number of edges, and lookup is constant order
+//   (for each edge, just return the index that doesn't match the input
+//   polygon).
+
+// How I would do step 3: With tutorials :)
+
+// How I would do Algorithm 3:
+//   For speed, I'd create a quadtree so the search for nearby polygons
+//   was only log(N), N being # polygons. Then for each polygon "close enough",
+//   perform a cross product between ordered edges and an edge to the point
+//   from the start vertex. If the sign is the same on all of them, it's inside the polygon (again, assuming convex polygons).
+
+// How I would do Algorithm 4: Hadn't even thought about it yet.

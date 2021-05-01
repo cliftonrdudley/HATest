@@ -1,5 +1,6 @@
 #include "Mesh.h"
 
+#include <fstream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -23,9 +24,14 @@ void commonExample()
   input << "\"edges\": [[0, 1], [1, 2], [0, 2], [0, 3], [2, 3]]";
   input << "}";
   Mesh mesh = Mesh::fromJson( input );
+  std::ofstream fout("with_polys.json");
+  fout << mesh.toJson() << std::endl;
+
   throwIfWrong( mesh.numVertices(), 4 );
-  throwIfWrong( mesh.numPolygons(), 2 );
   throwIfWrong( mesh.numEdges(), 5 );
+  throwIfWrong( mesh.numPolygons(), 2 );
+  throwIfWrong( mesh.getPolygon(0).vertices.size(), 3 );
+  throwIfWrong( mesh.getPolygon(1).vertices.size(), 3 );
 }
 
 int main()
