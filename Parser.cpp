@@ -34,7 +34,7 @@ std::vector< Edge > edgesFromJson( const std::string& edgeContent )
 {
   std::vector< Edge > result;
   // Parse edge results
-  std::regex pairFinder("([[:digit:][:space:]+],[[:digit:][:space:]+])+");
+  std::regex pairFinder("([[:digit:][:space:]]+,[[:digit:][:space:]]+)+");
   auto pairsBegin = std::sregex_iterator( edgeContent.begin(), edgeContent.end(), pairFinder );
   auto pairsEnd = std::sregex_iterator();
   for ( std::sregex_iterator pair = pairsBegin; pair != pairsEnd; pair++ ) {

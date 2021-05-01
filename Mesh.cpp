@@ -4,27 +4,49 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <limits>
 
-double angleFromXAxis( const Vertex& v1, const Vertex& v2 )
+int otherVertex( const Edge& inEdge, int vertex )
 {
-  return std::atan2( v2.yCoord - v1.yCoord, v2.xCoord - v1.xCoord );
+  if ( inEdge.startVertex == vertex ) {
+    return inEdge.endVertex;
+  } else if ( inEdge.endVertex == vertex ) {
+    return inEdge.startVertex;
+  } else {
+    throw std::runtime_error("vertex not in edge");
+  }
+}
+
+double crossProduct( double x1, double y1, double x2, double y2 )
+{
+  return (x1 * y2 - x2 * y1)/(std::sqrt(x1*x1+y1*y1)*std::sqrt(x2*x2+y2*y2));
+}
+
+double crossProduct( const Mesh& mesh, Edge e1, Edge e2, int sharedVertex )
+{
+  if ( e1 == e2 ) {
+    return std::numeric_limits<double>::max();
+  }
+  Vertex end1 = mesh.getVertex( otherVertex(e1, sharedVertex) );
+  Vertex end2 = mesh.getVertex( otherVertex(e2, sharedVertex) );
+  Vertex start = mesh.getVertex( sharedVertex );
+  double cross = crossProduct( end1.xCoord-start.xCoord,
+			       end1.yCoord-start.yCoord,
+			       end2.xCoord-start.xCoord,
+			       end2.yCoord-start.yCoord );
+  return cross;
 }
 
 struct AnglesAroundVertex {
-  AnglesAroundVertex( int inVertex, const Mesh& inMesh ) : centerVertex( inVertex ), mesh( inMesh ) {}
+  AnglesAroundVertex( int inVertex, Edge inEdge, const Mesh& inMesh )
+    : centerVertex( inVertex ), edge( inEdge ), mesh( inMesh ) {}
   int centerVertex;
+  Edge edge;
   const Mesh& mesh;
   bool operator()( const int edgeIndex1, const int edgeIndex2 ) const
   {
-    Edge e1 = mesh.getEdge( edgeIndex1 );
-    Edge e2 = mesh.getEdge( edgeIndex2 );
-    double angle1 = e1.startVertex == centerVertex
-      ? angleFromXAxis( mesh.getVertex( e1.startVertex ), mesh.getVertex( e1.endVertex ) )
-      : angleFromXAxis( mesh.getVertex( e1.endVertex ), mesh.getVertex( e1.startVertex ) );
-    double angle2 = e2.startVertex == centerVertex
-      ? angleFromXAxis( mesh.getVertex( e2.startVertex ), mesh.getVertex( e2.endVertex ) )
-      : angleFromXAxis( mesh.getVertex( e2.endVertex ), mesh.getVertex( e2.startVertex ) );
-    return angle1 < angle2;
+    return crossProduct( mesh, edge, mesh.getEdge( edgeIndex1 ), centerVertex )
+      < crossProduct( mesh, edge, mesh.getEdge( edgeIndex2 ), centerVertex );
   }
 };
 
@@ -37,10 +59,11 @@ void Mesh::constructPolygons()
   }
 
   // Basic algorithm:
-  // Order each edge around every vertex (counter-clockwise)
   // For each edge in each vertex:
   //    Walk to opposite vertex and store.
   //    Find first ordered edge after one just crossed.
+  //       If the angle is greater than 180, break. We're traveling around
+  //       the outside of the mesh.
   //    Repeat until back at initial vertex
   // If N is the number of vertices, and M is the AVERAGE valence of each vertex,
   //    then the computational complexity should be
@@ -52,25 +75,21 @@ void Mesh::constructPolygons()
   // Asymptotically worst case construction for all polygons is N*M times.
   // Total complexity then O( N * MlogM ) + O( N*M * M^2 ) => O( N * M^3 ), M << N
   
-  std::vector< std::vector< int > > orderedVertexEdges( numVertices() );
+  std::vector< std::vector< int > > vertexEdges( numVertices() );
   for ( int edgeIndex = 0; edgeIndex < edges.size(); edgeIndex++ ) {
-    orderedVertexEdges[ edges[edgeIndex].startVertex ].push_back( edgeIndex );
-    orderedVertexEdges[ edges[edgeIndex].endVertex ].push_back( edgeIndex );
-  }
-  for ( int vertex = 0; vertex < orderedVertexEdges.size(); vertex++ ) {
-    AnglesAroundVertex comp( vertex, *this );
-    std::sort( orderedVertexEdges[ vertex ].begin(), orderedVertexEdges[ vertex ].end(), comp );
+    vertexEdges[ edges[edgeIndex].startVertex ].push_back( edgeIndex );
+    vertexEdges[ edges[edgeIndex].endVertex ].push_back( edgeIndex );
   }
 
-  for ( int vertex = 0; vertex < orderedVertexEdges.size(); vertex++ ) {
-    for ( int edge : orderedVertexEdges[vertex] ) {
+  for ( int vertex = 0; vertex < vertexEdges.size(); vertex++ ) {
+    for ( int edge : vertexEdges[vertex] ) {
       Polygon currentPoly;
       currentPoly.vertices.push_back( vertex );
       int currentVertex = vertex;
       int currentEdgeIndex = edge;
       do {
 	Edge currentEdge = edges[currentEdgeIndex];
-	int nextVertex = currentEdge.startVertex == currentVertex ? currentEdge.endVertex : currentEdge.startVertex;
+	int nextVertex = otherVertex( currentEdge, currentVertex );
 	if ( nextVertex == vertex ) {
 	  currentPoly.closed = true;
 	  break;
@@ -79,12 +98,16 @@ void Mesh::constructPolygons()
 	  break;
 	}
 	currentPoly.vertices.push_back( nextVertex );
-	const std::vector< int >& currentVertexEdges = orderedVertexEdges[ nextVertex ];
-	auto currentEdgeInOrder = std::find( currentVertexEdges.begin(), currentVertexEdges.end(), currentEdgeIndex );
-	assert( currentEdgeInOrder != currentVertexEdges.end() );
-	auto nextEdgeInOrder = currentEdgeInOrder++;
-	if ( nextEdgeInOrder == currentVertexEdges.end() ) {
-	  nextEdgeInOrder = currentVertexEdges.begin();
+	const std::vector< int >& currentVertexEdges = vertexEdges[ nextVertex ];
+	AnglesAroundVertex comp( nextVertex, currentEdge, *this);
+	std::vector< int >::const_iterator nextEdgeInOrder =
+	std::min_element( currentVertexEdges.begin(), currentVertexEdges.end(), comp );
+	// the clockwise angle from current edge to next edge has to be less than 180
+	// (assuming convex polygons, I'm getting stuck on the concave twist), otherwise we're
+	// going around the outside of the mesh.
+	double cross = crossProduct( *this, currentEdge, edges[*nextEdgeInOrder], nextVertex );
+	if ( cross > 0 ) {
+	  break;
 	}
 	currentEdgeIndex = *nextEdgeInOrder;
 	currentVertex = nextVertex;
